@@ -3,17 +3,31 @@
 ################ Expression correlation ###############
 #######################################################
 
-dirName= "/Data/TCGA/cbioportal" #Put the location of cbioportal data of all tissue
-dirNames= list.dirs(dirName,recursive=FALSE)
-plotList= list()
-result= data.frame()
-for( i in 1:length(dirNames)){
-  dataTCGA= read.table(paste(dirNames[i],"/tcga/data_RNA_Seq_v2_expression_median.txt",sep=""),stringsAsFactors = F,header = T)
-  dataMYC_UBR5= data.frame(SampleID= colnames(dataTCGA[,-1:-2]), MYC_exp= as.numeric(dataTCGA[dataTCGA$Hugo_Symbol == "MYC",-1:-2]), UBR5_exp= as.numeric(dataTCGA[dataTCGA$Hugo_Symbol == "UBR5",-1:-2]))
-  corrVal= cor.test(log2(as.numeric(dataMYC_UBR5$MYC_exp)),log2(as.numeric(dataMYC_UBR5[,3])))
-  result= rbind(result,data.frame(Tissue= substr(dirNames[i],25,nchar(dirNames[i])),sampleSize= length(dataMYC_UBR5$SampleID),corr= corrVal$estimate,pVal= corrVal$p.value))
-}
+rnaSeqdata <- read.table("Data/RNAseq/Rseq_Data.csv",header=TRUE,stringsAsFactors = FALSE,sep=",",fill=TRUE)
+celllinetype <- read.table("Data/RNAseq/E-MTAB-2706.sdrf.txt",header=TRUE,stringsAsFactors = FALSE,sep="\t",fill=TRUE)
+celllineTable <- data.frame(unique(celllinetype[,c("Source.Name","Characteristics.cell.line.","Characteristics.tissue.supergroup.")]))
+celllineTable[,"Characteristics.cell.line."] <- gsub("-", "",celllineTable[,"Characteristics.cell.line."])
+celllineTable[,"Characteristics.cell.line."] <- gsub(" ", "",celllineTable[,"Characteristics.cell.line."])
+celllineTable[,"Characteristics.cell.line."] <- gsub("\\.", "",celllineTable[,"Characteristics.cell.line."])
+celllineTable[,"Characteristics.cell.line."] <- gsub("/", "",celllineTable[,"Characteristics.cell.line."])
+celllineTable[,"Source.Name"] <- gsub(" ", ".",celllineTable[,"Source.Name"])
+names(celllineTable) <- c("sample","cell_line","tissue")
 
+
+cell_line <- colnames(rnaSeqdata[,-1:-3])
+reducedTable <- data.frame(cell_line,MYC_val=t(rnaSeqdata[rnaSeqdata$gene_name == "MYC",-1:-3]),UBR5_val=t(rnaSeqdata[rnaSeqdata$gene_name == "UBR5",-1:-3]))
+combinedTable <- merge(celllineTable,reducedTable,by="cell_line")
+combinedTable <- combinedTable[,-2]
+names(combinedTable) <- c("cell_line","tissue","MYC_Exp","UBR5_Exp")
+
+cor.test(combinedTable[,3],combinedTable[,4])
+tissueType= unique(combinedTable[,2])
+#tissueType= c("pancreas","ovary","breast","lymphoid")
+par(mfrow=c(4,4))
+for (i in 1:length(tissueType)){
+  corTest =cor.test((combinedTable[combinedTable$tissue == tissueType[i],3]),(combinedTable[combinedTable$tissue == tissueType[i],4]))
+  message(paste("Correlation for ",tissueType[i],"= ",round(as.double(corTest["estimate"]),2)," with p-value= ",round(as.double(corTest["p.value"]),2),sep=""),"\n",appendLF=FALSE)
+}
 
 #######################################################
 ############### Co-amplification analysis #############
@@ -98,5 +112,5 @@ write.csv(results,"Essentiality_Amplification_celllines_Marcotte.csv")
 
 resultsData <- read.table("Essentiality_Amplification_celllines_Marcotte.csv",header=TRUE,stringsAsFactors = FALSE,sep=",",fill=TRUE)
 minTest= cor.test(resultsData$Essentiality_UBR5[resultsData$Essentiality_UBR5 < -1.5],apply(rbind(resultsData$Segment_Mean_MYC[resultsData$Essentiality_UBR5 < -1.5],resultsData$Segment_Mean_UBR5[resultsData$Essentiality_UBR5 < -1.5]),2,min))
-qplot(resultsData$Essentiality_UBR5[resultsData$Essentiality_UBR5 < -1.5],apply(rbind(resultsData$Segment_Mean_MYC[resultsData$Essentiality_UBR5 < -1.5],resultsData$Segment_Mean_UBR5[resultsData$Essentiality_UBR5 < -1.5]),2,min),xlab="Essentiality of UBR5",ylab="Min (MYC Amplifi.,UBR5 Amplfi.)",main=paste("correlation=",round(as.numeric(minTest$estimate),2),"(p-value=",round(as.numeric(minTest$p.value),2),")")) + geom_smooth(method=lm,se=FALSE)
-
+qplot(resultsData$Essentiality_UBR5[resultsData$Essentiality_UBR5 < -1.5],apply(rbind(resultsData$Segment_Mean_MYC[resultsData$Essentiality_UBR5 < -1.5],resultsData$Segment_Mean_UBR5[resultsData$Essentiality_UBR5 < -1.5]),2,min),xlab="Essentiality of UBR5 (zGARP score)",ylab="Min (MYC, UBR5 Amplification)",main=paste("Pearson Correlation ",round(as.numeric(minTest$estimate),2),"(p=",round(as.numeric(minTest$p.value),2),")")) + geom_smooth(method=lm,se=FALSE) + theme_classic()
+library(ggplot2)
